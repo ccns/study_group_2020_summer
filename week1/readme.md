@@ -1,595 +1,747 @@
-# 讀書會 Week 1
-
-----
-
-# CH1 Tutorial
-
-----
-
-# 1.1 Hello world
-
-- Standard IO
-
-```go=
-package main
-
-import "fmt"
-
-func main() {
-  fmt.Println("Hello, World")
-}
-```
-
-----
-
-# Loop
-
-- Loop syntax
-
-```go=
-for initialization; condition; post {
-
-  // zero or more statements
-}
-
-// a traditional "while" loop
-for condition { 
-  // ...
-}
-```
-
-----
-
-# 1.2 Echo
-
-## echo_1
-
-- Standard args read
-
-```go=
-// Echo1 prints its command-line arguments. 
-package main
-
-import (
-  "fmt"
-  "os"
- )
-
-func main() {
-  var s, sep string
-  for i := 1; i < len(os.Args); i++ {
-    s += sep + os.Args[i]
-    sep = " "
-  }
-  fmt.Println(s)
-}
-
-```
-
-----
-
-## echo_2
-
-- Standard args read with loop
-
-```go=
-
-// Echo2 prints its command-line arguments.
-package main
-
-import (
-  "fmt"
-  "os"
-)
-
-func main() {
-  s, sep := "", ""
-  for _, arg := range os.Args[1:] { 
-    s += sep + arg
-    sep = " "
-  }
-  fmt.Println(s)
-}
-```
-----
-
-# 1.3 Finding Duplicate Lines
-
-- 事實上，我們很少拿 Golang 來進行複雜的字串操作
-
-```go=
-package main
-
-import (
-  "bufio"
-  "fmt"
-  "os"
-)  
-
-func main() {
-  counts := make(map[string]int)
-  input := bufio.NewScanner(os.Stdin)
-  for input.Scan() {
-    counts[input.Text()]++
-  }
-  // NOTE: ignoring potential errors from input.Err()
-  
-  for line, n := range counts {
-    if n > 1 {
-      fmt.Printf("%d\t%s\n", n, line)
-    }
-  }
-}
-```
-
-----
-
-# 1.4 Animated GIFs
-
-- 我其實不知道它可以做 GIF
-- 我也沒看過別人用這功能
-- Code 基本上都是數學函數，先跳過
-
-----
-
-# 1.5 Fetch a URL
-
-```go=
-package main
-
-import (
-  "fmt"
-  "io/ioutil"
-  "net/http"
-  "os"
-)
-
-func main() {
-  for _, url := range os.Args[1:] {
-    resp, err := http.Get(url)
-    if err != nil {
-      fmt.Fprintf(os.Stderr, "fetch: %v\n", err)
-      os.Exit(1)
-    }
-    b, err := ioutil.ReadAll(resp.Body)
-    resp.Body.Close()
-    if err != nil {
-      fmt.Fprintf(os.Stderr, "fetch: reading %s: %v\n", url, err) 
-      os.Exit(1)
-    }
-    fmt.Printf("%s", b)
-  }
-}
-```
-
-----
-
-# 1.6 fetch Concurrently
-
-- fetch concurrently
-
-```go=
-package main
-
-import (
-  "fmt"
-  "io"
-  "io/ioutil"
-  "net/http"
-  "os"
-  "time"
-)
-
-func main() {
-  start := time.Now()
-  ch := make(chan string)
-  for _, url := range os.Args[1:] {
-    go fetch(url, ch)
-    // start a goroutine
-  }
-  for range os.Args[1:] {
-    fmt.Println(<-ch)
-    // receive from channel ch
-  }
-  fmt.Printf("%.2fs elapsed\n",time.Since(start).Seconds())
-}
-
-func fetch(url string, ch chan<- string) {
-	start := time.Now()
-	resp, err := http.Get(url)
-	if err != nil {
-		ch <- fmt.Sprint(err)
-		return
-	}
-
-	nbytes, err := io.Copy(ioutil.Discard, resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		ch <- fmt.Sprintf("while reading %s: %v\n", url, err)
-		return
-	}
-	secs := time.Since(start).Seconds()
-	ch <- fmt.Sprintf("%.2fs  %7d  %s", secs, nbytes, url)
-}
-
-```
-
-----
-
-# 1.7 Web server
-
-## server_1
-
-```go=
-package main
-
-import (
-  "fmt"
-  "log"
-  "net/http"
-)
-
-func main() {
-  http.HandleFunc("/", handler)
-  // each request calls handler
-  log.Fatal(http.ListenAndServe("localhost:8000", nil))
-}
-
-// handler echoes the Path component of the request URL r.
-func handler(w http.ResponseWriter, r *http.Request) {
-  fmt.Fprintf(w, "URL.Path = %q\n", r.URL.Path)
-}
-
-```
-
-----
-
-## server_2
-
-```go=
-package main
-import (
-  "fmt"
-  "log"
-  "net/http"
-  "sync"
-)
-
-var mu sync.Mutex
-var count int
-
-func main() {
-  http.HandleFunc("/", handler)
-  http.HandleFunc("/count", counter)
-  log.Fatal(http.ListenAndServe("localhost:8000", nil))
-}
-
-// handler echoes the Path component of the requested URL.
-func handler(w http.ResponseWriter, r *http.Request) {
-  mu.Lock()
-  count++
-  mu.Unlock()
-  fmt.Fprintf(w, "URL.Path = %q\n", r.URL.Path)
-}
-
-// counter echoes the number of calls so far.
-// func counter(w http.ResponseWriter, r *http.Request) { mu.Lock() fmt.Fprintf(w, "Count %d\n", count) mu.Unlock() }
-```
-
-----
-
-## request content
-
-```go=
-func handler(w http.ResponseWriter, r *http.Request) {
-  fmt.Fprintf(w, "%s %s %s\n", r.Method, r.URL, r.Proto)
-  for k, v := range r.Header {
-    fmt.Fprintf(w, "Header[%q] = %q\n", k, v)
-  }
-  fmt.Fprintf(w, "Host = %q\n", r.Host)
-  fmt.Fprintf(w, "RemoteAddr = %q\n", r.RemoteAddr)
-  if err := r.ParseForm(); err != nil {
-    log.Print(err)
-  }
-  
-  for k, v := range r.Form {
-    fmt.Fprintf(w, "Form[%q] = %q\n", k, v)
-  }
-}
-```
-
-----
-
-# 1.8 Loose Ends
-
-- just a concept of control flow
-- for example: cases switching
-
-```go=
-switch coinflip() {
-  case "heads":
-    heads++
-  case "tails":
-    tails++
-  default:
-    fmt.Println("landed on edge!")
-}
-```
-
+---
+tags: CCNS
 ---
 
-# CH2 Program Structure
+# Rust讀書會 Week 1
 
-----
+# CH1~CH2 
+還是稍微講一下好惹
 
-# 命名
+## Hello Rust
+```rust=
+//hello.rs
+fn main(){
+    println!("hello rust")
+}
+```
+* Compile & run (Windows) 
+> rustc hello.rs
+> ./hello.exe
 
-----
+* Compile後會產生兩個檔案
+  * exe
+  * pdb
+    * debug info 
+> ls
+> main.exe
+> main.pdb
+> main.rs
 
-## 規範
+* ahead-of-time compiled language
+  * 指的是可以把.exe給別人直接執行的語言，但若是Ruby,Python之類的就不行，得用PyInstaller之類的額外包起來 
 
-- [a-zA-Z_][a-zA-Z0-9_]*
-- camel case
-- 別用到關鍵字
-![](https://i.imgur.com/NZhjiZM.png)
-![](https://i.imgur.com/QT2AG3f.png)
+## Cargo
+Rust的程式碼專案管理和建置工具
 
-```go=
-package main
+* 建立Cargo project
+> cargo new 專案名稱
 
-// valid
-var _foo int
-var _123 int
-var fooBar int
 
-// not recommand
-var foo_bar int
+* Project list
+![](https://i.imgur.com/hopFGFP.jpg)
 
-// syntax error
-var 123 int
+* Cargo.toml
+  *  TOML (Tom’s Obvious, Minimal Language) format
+  *  其實就是一種configuration file format
+```
+[package]
+name = "hello_cargo"
+version = "0.1.0"
+authors = ["Your Name <you@example.com>"]
+edition = "2018"
 
-// may cause type ambiguous, int is not a type
-// var int int
+[dependencies]
+```
+* Cargo.lock
+  * 就記錄一些這個project用到的dependencies的version，類似go mod 
+```
+# This file is automatically @generated by Cargo.
+# It is not intended for manual editing.
+[[package]]
+name = "hello_cargo"
+version = "0.1.0"
 ```
 
-----
+* Run & Build in Cargo
+  * run之前沒有先build的話會先幫你build再run 
+> cargo run
+> cargo build
 
-## Scope
+* cargo check
+可以用來快速檢驗是否可以通過compile
 
-```go=
-package main
+* cargo update
+只會update **Cargo.lock**中的東西
 
-import (
-	"fmt"
-)
+* cargo test
+test
 
-var _foo int = 0
+* Delete cargo
+會把target目錄下的東西全部刪除
+> cargo clean
 
-func foo() {
+* 安裝套件，以rand舉例
+[doc](https://crates.io/crates/rand)
 
-	// unused, because of not accessable out of func
-	// var _foo int = 1
+1. 直接修改toml
+![](https://i.imgur.com/LbLTYQg.jpg)
+
+2. 用cargo-edit
+> cargo install cargo-edit
+> cargo add rand
+
+## Guessing number game
+[thread-rng doc](https://docs.rs/rand/0.6.5/rand/fn.thread_rng.html)
+
+```rust=
+// Rng是rand的trait, 定義了gen_range的實作, 用來擴充thread_rng // ch10會談到trait
+use rand::Rng;
+use std::cmp::Ordering;
+use std::io;
+
+fn main() {
+    println!("Guess the number!");
+    // rust用::來尋找指定套件下的func
+    let secret_number = rand::thread_rng().gen_range(1, 101);
+	// loop = infinite loop, 另外Rust有while, for可用
+    loop {
+        println!("Please input your guess.");
+
+        let mut guess = String::new();
+
+        // 呼叫stdin和read_line method
+        io::stdin()
+            .read_line(&mut guess)
+            .expect("Failed to read line");
+	// trim space
+		
+	// parse是將string -> unsigned int 32
+	// 兩個變數名稱一樣, 新的guess在宣告之後會shadow掉原本的guess
+	// 右邊的guess是剛剛宣告那個
+        let guess: u32 = match guess.trim().parse() {
+            Ok(num) => num,
+            Err(_) => continue,
+        };
+
+        println!("You guessed: {}", guess);
+        // ch6, ch18會談更多match, 可以先當成switch看待
+        match guess.cmp(&secret_number) {
+            Ordering::Less => println!("Too small!"),
+            Ordering::Greater => println!("Too big!"),
+            Ordering::Equal => {
+                println!("You win!");
+                break;
+            }
+        }
+    }
 }
+```
+# CH3 Common Programming Concepts
 
-func main() {
+## Variables and Mutability
 
-	var _bar int = 2
-	fmt.Println("_foo: ", _foo)
-	fmt.Println("_bar: ", _bar)
+總之就是有`mut`代表變數，沒有則代表不可變，可用`const`來宣告常數
+
+### Shadowing
+
+```rust=
+fn main() {
+    let x = 5;
+
+    let x = x + 1;
+
+    let x = x * 2;
+
+    println!("The value of x is: {}", x);
 }
-
-// $ go run week_1/ch_2/variable/scope.go
-// _foo:  0
-// _bar:  2
 ```
 
-----
-
-# 宣告
-
-----
-
-## package
-
-- Package 是 Go program 的模組化管理單位
-- 任何 .go file 必須以 Package 宣告開頭
-- 而後接連的是 import
-- 任何 .go file 必須屬於一個 Package，且只能屬於一個
-- 但一個 Package 可以包含多個 .go files
-
-----
-
-### main package
-
-- 程式起點，且必須實作 main 函數
-- 若缺少 main 函數則程式無法啟動
-  - Go run 無法執行
-  - Go build 不會包東西出來
-
-```go=
-// skip may cause :
-// expected 'package', found 'func'
-package main
-
-// dupclicate may cause :
-// syntax error: non-declaration statement outside function body
-// package sub
-
-// skip may cause :
-// function main is undeclared in the main package
-func main() { /* Do somthing*/ }
+```
+$ cargo run
+   Compiling variables v0.1.0 (file:///projects/variables)
+    Finished dev [unoptimized + debuginfo] target(s) in 0.31s
+     Running `target/debug/variables`
+The value of x is: 12
 ```
 
-----
-
-## import
-
-```go=
-package main
-
-// single package import
-import "fmt"
-
-// multiple packages import
-import (
-  "fmt"
-  "os"
-)
-
-// prefered arrangement
-import (
-  "standard packages"
-  
-  "third party packages"
-  
-  "in-project local packages"
-)
+* pass
+```rust=
+fn main() {
+    let spaces = "   ";
+ 
+    let spaces = spaces.len();
+}
+```
+* error
+```rust=
+    let mut spaces = "   ";
+    spaces = spaces.len();
 ```
 
-----
+## Data Types
+Rust是statically typed language，也就是說所有的變數在compile時都得決定好她們的型別是甚麼
 
-## var
-  - default value, no un-init var
-  - auto type map with list or func call
-  - init 時機
-    - 執行前
-    - 被 import 前
-  - short declare(a declare, = is assign), error if re-declare
-
-```go=
-package main
-
-import (
-	"fmt"
-	"reflect"
-)
-
-var foo, bar, mur = 0.2, true, "Hi"
-
-func declare() {
-
-	unique := 0
-	unique, sub := 1, 2
-    unique, sub = sub, unique
-
-	// re-declare error
-	// unique := 3
-
-	fmt.Println("declare: ", unique, sub)
+* `let`會幫你推導變數型別
+```rust=
+fn main() {
+    let a;
+    let b = 1;
+    a = 2;
 }
-
-func main() {
-
-	declare()
-	fmt.Println(foo, bar, mur)
-	fmt.Println(reflect.TypeOf(foo), reflect.TypeOf(bar), reflect.TypeOf(mur))
-}
-
-// $ go run week_1/ch_2/variable/declare.go
-// declare:  2 1
-// 0.2 true Hi
-// float64 bool string
-
-```
-----
-
-- pointer
-    - operator order (pointer first)
-    - new 沒啥人用，跳過
-    - lifetime, GC 太複雜，跳過
-
-```go=
-package main
-
-import (
-	"fmt"
-)
-
-func incr(p *int) int {
-	*p++
-	return *p
-}
-
-func main() {
-
-	v := 1
-	incr(&v)
-	fmt.Println(incr(&v))
-}
-
-// $ go run week_1/ch_2/pointer/order.go
-// 3
 ```
 
-----
+### Scalar type
+* 有integers, floating-point numbers, Booleans, and characters四種
 
-## assign
-  - assign with operator
-  - tuple assign
-  - unwanted assign
+#### int
 
-```go=
-package main
+![](https://i.imgur.com/9m29h2g.jpg)
+![](https://i.imgur.com/wXmjmcl.jpg)
 
-import (
-	"fmt"
-)
+* rust預設是i32
 
-func multipleReturn() (string, int) {
+#### float
+```rust=
+fn main() {
+    let x = 2.0; // f64
 
-	return "first", 0
+    let y: f32 = 3.0; // f32
 }
+```
+#### bool
+```rust=
+fn main() {
+    let t = true;
 
-func main() {
-
-	_, value := multipleReturn()
-	value++
-	fmt.Println("value: ", value)
-
-	medals := []string{"gold", "silver", "bronze"}
-	medals[0] = "Platinum"
-	fmt.Println("medals: ", medals)
+    let f: bool = false; // with explicit type annotation
 }
-
-// $ go run week_1/ch_2/assign/assign.go
-// value:  1
-// medals:  [Platinum silver bronze]
 ```
 
-----
+#### char
 
-## type
-  - struct declare 十分重要，為程式架構核心能力
-  - 留意 compareable
-
-```go=
-package main
-
-import (
-	"fmt"
-)
-
-type price float64
-type height float64
-type house struct {
-	Price  price
-	Height height
+```rust=
+fn main() {
+    let c = 'z';
+    let z = 'ℤ';
+    let heart_eyed_cat = '😻';
 }
-
-const (
-	house_price  price  = 4000000.0
-	house_height height = 35.5
-)
-
-func main() {
-
-	// type mismatch may cause :
-	// invalid operation: house_height < house_price (mismatched types height and price)
-	// fmt.Println(house_height < house_price)
-
-	fmt.Println(price(house_height) < house_price)
-}
-
-// $ go run week_1/ch_2/type/declare.go
-// true
 ```
+### Compound Types
+複合型別
+
+#### Tuple
+
+
+```rust=
+fn main() {
+    let tup = (500, 6.4, 1);
+	
+    let (x, y, z) = tup; //用let宣告才能這樣做
+	
+    println!("The value of y is: {}", y);
+}
+```
+
+```rust
+fn main() {
+    let x: (i32, f64, u8) = (500, 6.4, 1);
+	
+    let five_hundred = x.0;
+
+    let six_point_four = x.1;
+
+    let one = x.2;
+}
+```
+
+#### Array
+
+```rust=
+let a: [i32; 5] = [1, 2, 3, 4, 5]; //i32 = type of each elements
+let a = [3; 5]; // a = [3, 3, 3, 3, 3]
+```
+
+```rust=
+fn main() {
+    let a = [1, 2, 3, 4, 5];
+    let first = a[0];
+    let second = a[1];
+}
+```
+## Function
+Rust是expression-based language，因此要搞清楚statement跟expression的差別。
+
+函式結構比較類似PASCAL。
+* expression
+```rust=
+fn main() {
+    let x = plus_one(5);
+
+    println!("The value of x is: {}", x);
+}
+
+fn plus_one(x: i32) -> i32 {
+    x + 1 // 沒有;
+}
+```
+* statement
+```rust=
+fn main() {
+    let x = plus_one(5);
+
+    println!("The value of x is: {}", x);
+}
+
+fn plus_one(x: i32) -> i32 {
+    x + 1;// 有;
+}
+```
+
+## Comments
+`//`
+
+## Control Flow
+
+### if else
+```rust=
+fn main() {
+    let number = 6;
+
+    if number % 4 == 0 {
+        println!("number is divisible by 4");
+    } else if number % 3 == 0 {
+        println!("number is divisible by 3");
+    } else if number % 2 == 0 {
+        println!("number is divisible by 2");
+    } else {
+        println!("number is not divisible by 4, 3, or 2");
+    }
+}
+```
+### loop
+```rust=
+fn main() {
+    let mut counter = 0;
+
+    let result = loop {
+        counter += 1;
+
+        if counter == 10 {
+            break counter * 2;
+        }
+    };
+
+    println!("The result is {}", result);
+}
+```
+### while 
+```rust=
+fn main() {
+    let mut number = 3;
+
+    while number != 0 {
+        println!("{}!", number);
+
+        number -= 1;
+    }
+
+    println!("LIFTOFF!!!");
+}
+```
+### for
+```rust=
+fn main() {
+    let a = [10, 20, 30, 40, 50];
+
+    for element in a.iter() {
+        println!("the value is: {}", element);
+    }
+}
+```
+
+# CH4 Understanding Ownership
+Ownership是Rust最特殊的特性，它正是利用ownership來實現不需要垃圾回收的記憶體管理機制。
+
+這章會談ownership跟他的相關特性，像是borrowing跟slices，還有Rust的記憶體管理方式。
+
+## What Is Ownership?
+
+常見的記憶體管理方式有兩種，一種是有垃圾回收機制的語言，它會自動回收不需要的記憶體，另一種是要明確地寫出記憶體的配置跟釋放的語言，而Rust屬第三種
+
+* 首先要複習一下，在記憶體管理中
+  * Stack用來存放可預測存活週期的資料，LIFO，stack存放的東西可由系統自行產生與回收
+  * 而heap用來存放不可預測存活週期、動態產生出來的資料，如果沒有適當的釋放掉會造成memory leak，所以才會有很多語言提供垃圾回收機制來自動處理掉這些沒有被使用的資料。
+
+Rust的記憶體管理方式是利用ownership與一系列的規則(rule)來管理記憶體，而這會在compile time檢查
+
+---
+**Rule:**
+1. Each value in Rust has a variable that’s called its owner.
+2. There can only be one owner at a time.
+3. When the owner goes out of scope, the value will be dropped.
+---
+名詞解釋:
+  * scope:變數存在的範圍
+```rust
+fn main() {
+    {                      // s is not valid here, it’s not yet declared
+        let s = "hello";   // s is valid from this point forward
+
+        // do stuff with s
+    }                      // this scope is now over, and s is no longer valid
+}
+
+```
+### String Type
+
+`String` type是Rust提供的第二種string用法，這邊書籍以`String`為例來討論rule，ch8會討論更深的`String` type用法
+
+前一章提過的string literals有兩個缺點
+1. immutable
+2. not every string value can be known when we writing, ex: user input
+
+* 由於第二個缺點讓compile time的時候我們並不知道要allocate多少記憶體給它，也因此它是存在heap中
+* 但我們現在要使用的String是可以透過下列這種方式改變的，而可以改變的原因就在於兩者的記憶體處理方式不同
+
+```rust=
+let mut s = String::from("hello"); 
+// method in ch5
+// namespacing with module in ch7
+
+s.push_str(", world!"); // push_str() appends a literal to a String
+
+println!("{}", s); // This will print `hello, world!`
+```
+
+### Memory and Allocation
+
+`String` type的目標有兩個:
+1. The memory must be requested from the memory allocator at runtime.
+2. We need a way of returning this memory to the allocator when we’re done with our `String`
+
+* 第一個目標剛剛已經利用`String::from`達成了，這個method就是在request String所需要的memory
+
+* 第二個目標在其他語言中會被GC處理掉，但在沒有GC的語言中，我們需要自己判別要釋放那些記憶體，e.g.:Allocate & free pair
+
+* Rust釋放記憶體的時機則是**當擁有這個記憶體的owner離開了scope的時候**
+
+```rust=
+{
+	let s = String::from("hello"); // s is valid from this point forward
+
+	// do stuff with s
+}					// this scope is now over, and s is no longer valid
+```
+在這個例子中，s就是owner，而當s離開了它的scope，Rust就會自動call一個特別的函式`drop()`來釋放記憶體，rule 2可以確保不會釋放到其他東西
+
+#### Ways Variables and Data Interact: Move
+
+這邊講的是`String`跟正常變數看待資料複製的不同之處
+
+* 正常變數的處理方式會是儲存兩個5，owner分別是x和y，而且是放在stack中
+```rust=
+let x = 5;
+let y = x;
+```
+
+* `String`的處理方式則不一樣
+```rust=
+let s1 = String::from("hello");
+let s2 = s1;
+```
+
+* `String`裡面有ptr, len, capacity，這些是存在stack中，但ptr指向的資料，也就是'hello'則是存在heap中
+![](https://doc.rust-lang.org/stable/book/img/trpl04-01.svg =400x400)
+
+* 在`assign` s1給s2時，是直接複製整個`String`，而非複製資料
+![](https://doc.rust-lang.org/stable/book/img/trpl04-02.svg =400x400)
+
+* 但這樣存其實會造成一個問題，也就是double free error，在s1和s2 out of scope的時候，都會想`drop`同一筆資料，但兩者的scope可能並不一樣
+
+* 當然你可能會想說，可以改成下圖這樣，但若這樣，heap data很多的時候，cost會很高
+![](https://doc.rust-lang.org/stable/book/img/trpl04-03.svg =500x500)
+
+* 考慮到這些問題，其實在複製`String`的時候，Rust做的並不是複製，而是**移動(Move)**，Rust在`assign`s1給s2的時候就會把s1設為`invalid`，但不會`drop`掉資料，因此如果在s2被創造之後使用s1的話會跑錯
+```rust=
+fn main() {
+    let s1 = String::from("hello");
+    let s2 = s1;
+    println!("{}, world!", s1);
+}
+```
+* 會拿到下列的error message
+![](https://i.imgur.com/orm5x6r.jpg)
+
+* s1 invalid而s2 valid的示意圖如下
+![](https://doc.rust-lang.org/stable/book/img/trpl04-04.svg =400x400)
+
+#### clone
+
+剛剛提到直接`assign`s1會變成是在`Move`，那怎樣做才不會出現問題咧?
+
+因為`String`不是有`Copy`method的，因此要利用`clone`來複製
+```rust=
+let s1 = String::from("hello");
+let s2 = s1.clone();
+
+println!("s1 = {}, s2 = {}", s1, s2);
+```
+* `Copy` trait會在ch10談更深一點，總之這邊只要知道`Copy`和`Move`不同，當`assign`的時候要看那個資料結構有沒有`Copy`，如果沒有的話就會變成是在`Move`
+
+* 基本資料型態全部都有實作`Copy`，像是int, float, bool, char, Tuple
+
+### Ownership and Functions
+
+呼叫函式的時候傳遞參數的方式和剛剛說的一樣，有`Copy`就會用`Copy`，沒有就會變成`Move`
+
+```rust=
+fn main() {
+    let s = String::from("hello");  // s comes into scope
+
+    takes_ownership(s);             // s's value moves into the function...
+                                    // ... and so is no longer valid here
+
+    let x = 5;                      // x comes into scope
+
+    makes_copy(x);                  // x would move into the function,
+                                    // but i32 is Copy, so it’s okay to still
+                                    // use x afterward
+
+} // Here, x goes out of scope, then s. But because s's value was moved, nothing
+  // special happens.
+
+fn takes_ownership(some_string: String) { // some_string comes into scope
+    println!("{}", some_string);
+} // Here, some_string goes out of scope and `drop` is called. The backing
+  // memory is freed.
+
+fn makes_copy(some_integer: i32) { // some_integer comes into scope
+    println!("{}", some_integer);
+} // Here, some_integer goes out of scope. Nothing special happens.
+```
+* 如果在call `takes_ownership`之後使用`s`就會出錯
+
+### Return Values and Scope
+
+你可以再傳回來阿
+
+WTF ???
+![](https://i.imgur.com/Fm0wUdA.jpg)
+
+
+```rust=
+fn main() {
+    let s1 = gives_ownership();         // gives_ownership moves its return
+                                        // value into s1
+
+    let s2 = String::from("hello");     // s2 comes into scope
+
+    let s3 = takes_and_gives_back(s2);  // s2 is moved into
+                                        // takes_and_gives_back, which also
+                                        // moves its return value into s3
+} // Here, s3 goes out of scope and is dropped. s2 goes out of scope but was
+  // moved, so nothing happens. s1 goes out of scope and is dropped.
+
+fn gives_ownership() -> String {        // gives_ownership will move its
+                                        // return value into the function
+                                        // that calls it
+
+    let some_string = String::from("hello"); // some_string comes into scope
+
+    some_string                              // some_string is returned and
+                                             // moves out to the calling
+                                             // function
+}
+
+// takes_and_gives_back will take a String and return one
+fn takes_and_gives_back(a_string: String) -> String { // a_string comes into
+                                                      // scope
+
+    a_string  // a_string is returned and moves out to the calling function
+}
+```
+看來作者很幽默ㄛ
+
+* 也可以用tuple把它傳回來，等等會用到這個例子
+```rust=
+fn main() {
+    let s1 = String::from("hello");
+
+    let (s2, len) = calculate_length(s1);
+
+    println!("The length of '{}' is {}.", s2, len);
+}
+
+fn calculate_length(s: String) -> (String, usize) {
+    let length = s.len(); // len() returns the length of a String
+
+    (s, length)
+}
+```
+
+那麼，what should we do呢?
+答案就在下一節
+## References and Borrowing
+
+* 其實只要把傳入的參數改為reference(`&`)就好了
+* 參考就跟ownership無關了，`&s1`並沒有擁有`s1`的值，而只是創造一個指向`s1`記憶體位置的參考，當然也不需要回傳，因為它根本沒有ownership
+* 順帶一提參考的scope是從被引入開始直到最後一次被使用
+```rust=
+fn main() {
+    let s1 = String::from("hello");
+
+    let len = calculate_length(&s1);
+
+    println!("The length of '{}' is {}.", s1, len);
+}
+
+fn calculate_length(s: &String) -> usize { // s is a reference to a String
+    s.len()
+} // Here, s goes out of scope. But because it does not have ownership of what
+  // it refers to, nothing happens.
+```
+* 第10行的s不需要dereferencing(`*`)是因為Rust會自動幫你解，不然理論上是要寫成`(*s).len()`
+* reference示意圖
+![](https://doc.rust-lang.org/stable/book/img/trpl04-05.svg =500x500)
+
+* Rust中將這種利用reference傳遞函數參數的方法稱為**borrowing** 
+
+* 那如果我們修改borrowing中的參數會怎樣咧
+
+```rust=
+fn main() {
+    let s = String::from("hello");
+
+    change(&s);
+}
+
+fn change(some_string: &String) {
+    some_string.push_str(", world");
+}
+```
+這會得到下圖的error message
+![](https://i.imgur.com/ckPdBPP.jpg)
+* 這是因為宣告變數的時候它預設是immutable，所以他的參考也是immutable的
+* 要解決當然就是把它宣告成mutable就好
+```rust=
+fn main() {
+    let mut s = String::from("hello");
+
+    change(&mut s);
+}
+
+fn change(some_string: &mut String) {
+    some_string.push_str(", world");
+}
+```
+
+* 但是mutable reference有一個很大的限制就是一個scope中只能有一個mutable reference，這是為了維持安全性，避免**data races**
+
+* **data races**就類似race condition，在以下情況會發生
+  * Two or more pointers access the same data at the same time.
+  * At least one of the pointers is being used to write to the data.
+  * There’s no mechanism being used to synchronize access to the data.
+
+* 只要有這樣的情況發生，compile就不會過，Rust的精神就是寧願compile很嚴格也不要不安全，如下例就不會過
+```rust=
+let mut s = String::from("hello");
+
+let r1 = &mut s;
+let r2 = &mut s;
+
+println!("{}, {}", r1, r2);
+```
+* error message
+![](https://i.imgur.com/vbWAZ5n.jpg)
+
+* 當然其實只要讓他們兩個不在同一個scope就行啦
+```rust=
+let mut s = String::from("hello");
+{
+    let r1 = &mut s;
+} // r1 goes out of scope here, so we can make a new reference with no problems.
+
+let r2 = &mut s;
+```
+
+* 也可以善用reference scope的特性來分開
+```rust=
+let mut s = String::from("hello");
+
+let r1 = &s; // no problem
+let r2 = &s; // no problem
+println!("{} and {}", r1, r2);
+// r1 and r2 are no longer used after this point
+
+let r3 = &mut s; // no problem
+println!("{}", r3);
+```
+
+### Dangling References
+
+dangling pointer指的是指標指到了已經被分配給其他人的記憶體位址或者是已經被釋放的位址的問題，但Rust中不會發生這種情況
+
+* s的scope是在dangle()中的，dangle結束的時候它就被釋放了，但是這邊卻想return這個s的參考出來
+```rust=
+fn main() {
+    let reference_to_nothing = dangle();
+}
+
+fn dangle() -> &String { // dangle returns a reference to a String
+
+    let s = String::from("hello"); // s is a new String
+
+    &s // we return a reference to the String, s
+} // Here, s goes out of scope, and is dropped. Its memory goes away.
+  // Danger!
+```
+* error message
+![](https://i.imgur.com/BykQ7Tr.jpg)
+這邊有提到lifetime，ch10會講到，這邊先不提
+
+* 沒問題的code
+```rust=
+fn no_dangle() -> String {
+    let s = String::from("hello");
+
+    s
+}
+```
+
+## Slice Type
+Slice是另一個沒有ownership的data type，slices讓你參考一個連續的空間
+
+* Format: &名稱[start..end]
+```rust=
+let s = String::from("hello world");
+
+let hello = &s[0..5];  //等同於&s[..5];
+let world = &s[6..11]; //等同於&s[6..];
+let h = s[0];          //這樣用會error
+```
+* 圖
+![](https://doc.rust-lang.org/stable/book/img/trpl04-06.svg =500x500)
+
+### String literals are slices
+* s的type是`&str`，這也是string literals是immutable的原因，因為string本來就immutable，而它只是string的參考
+```rust=
+let s = "Hello, world!";
+```
+
+### Array slices
+slice的type是`&[]`，也可用此性質參考未知大小的array
+```rust=
+fn main() {
+    let a = [1, 2, 3, 4, 5]; // [i32; 5]
+    let slice_1 = &a[1..3]; // &[i32]
+    let slice_2 = &a; // &[i32; 5]
+ 
+    println!("{:?}", a);
+    println!("{:?}", slice_1);
+    println!("{:?}", slice_2);
+}
+```
+
+## Q&A
+
+* 什麼時候才需要自己解參考
