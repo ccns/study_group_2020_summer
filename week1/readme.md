@@ -1,7 +1,3 @@
----
-tags: CCNS
----
-
 # Rust讀書會 Week 1
 
 # CH1~CH2 
